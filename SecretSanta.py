@@ -15,8 +15,9 @@ namesList = pd.read_excel('SecretSanta.xlsx', sheetname = 'list')
 
 i=0
 usedlist = []
-while (i<8):
-    rand =  rd.randint(0,7)
+length = len(namesList.index)
+while (i<length):
+    rand =  rd.randint(0,length-1)
     if namesList.couple[i] == namesList.couple[rand] or rand in usedlist:
         continue
     else:
