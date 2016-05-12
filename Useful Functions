@@ -1,0 +1,29 @@
+#!/usr/bin/env python
+import os
+import sqlite3 as sql
+
+def CompareLists(list1,list2):
+#used to find new files in ASDC server. takes two lists of filenames, finds files in list 1 but not in list 2.    
+    newfiles = []
+    for x in list1:
+        if x not in list2:
+            newfiles.append(x)
+    return newfiles
+
+def cp_files(origin,files,destination):
+    #move files from one folder on NCCS to another. Files is a list of files to be moved
+    for myfile in files:
+        cmd = 'cp %s/%s %s' (origin,myfile,destination)
+        subprocess.call(cmd,shell=True)
+
+    return
+
+def todayYYYYMMDD():
+    YYYYMMDD = time.strftime('%Y%m%d')
+    return YYYYMMDD
+
+#connects to SQLITE3 database
+def sqlconn():
+    cx = sql.connect('/discover/home/msutton1/processed.db')
+    cu = cx.cursor()
+    return (cx,cu)
