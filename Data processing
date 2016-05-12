@@ -1,0 +1,126 @@
+#!usr/bin/env python
+
+# Module that runs OMAERUV algorigthm for the Torres team
+# global imports
+from sys import argv
+import os
+import subprocess
+import pdb
+import sqlite3 as sql
+import time
+#######################################################################
+
+#local imports
+import lib_general as gen
+
+# Defined functions ####
+def copyDir(src,dest): # copies content of folder and pastes in new directory
+    src_files = os.listdir(src)
+    for file_name in src_files:
+        full_file_name = os.path.join(src, file_name)
+        if (os.path.isfile(full_file_name)):
+            shutil.copy(full_file_name, dest)
+    return
+
+#connects to database
+def sqlconn():
+    cx = sql.connect('/discover/home/msutton1/processed.db')
+    cu = cx.cursor()
+    return (cx,cu)
+
+def CompareLists(list1,list2):
+#used to find new files in ASDC server. takes two lists of filenames, finds files in list 1 but not in list 2.    
+    newfiles = []
+    for x in list1:
+        if x not in list2:
+            newfiles.append(x)
+    return newfiles
+
+#MAIN#####
+if __name__ == "__main__":
+    #os.system('rm -r $NOBACKUP/torres/OMAERUV_1.6.5_OneDir_*')         
+    L1bpath = '/discover/nobackup/msutton1/L1_files/1B'
+    Source_code = '/discover/nobackup/msutton1/torres/OMAERUV_1.6.5_OneDir'
+    with open('/discover/nobackup/msutton1/torres/L1files.txt','r') as f:
+        filelist = [line.rstrip() for line in f]
+
+    #check list of files against list of processed files.
+    (cx,cu) = sqlconn()
+    cmd = 'SELECT file_name FROM processed_data'
+    cu.execute(cmd)
+    processed = cu.fetchall()
+    processed_string=[str(r[0]) for r in processed]
+    cx.close()
+    files = CompareLists(filelist,processed_string)
+    logfile = open('/discover/nobackup/msutton1/torres/Logs.txt','r')
+    logs = logfile.readlines()
+    os.system('rm -r /discover/nobackup/msutton1/torres/OMAERUV_1.6.5_OneDir_*')
+
+    #Write and execute SLURM script figure
+    newPath = '/discover/home/msutton1/'
+    slurmpath = os.path.join(newPath,'T_slurm.sh')
+
+    #pdb.set_trace()
+    slurm = open(slurmpath,'w')
+    slurm.write('#!/bin/bash\n')
+    today = time.strftime('%m/%d/%Y')
+    myline = '#SBATCH -J OMAERUV_%s\n' %(today)
+    slurm.write(myline)
+    slurm.write('#SBATCH -C hasw \n')
+    slurm.write('#SBATCH -t 00:30:00\n')
+    numfiles = str(len(files))
+    tasks = '#SBATCH --tasks=%s' %(numfiles)
+    slurm.write(tasks)
+    slurm.write('\n\n')
+    slurm.write('#Setup policeme to monitor memory use\n')
+                                                                                     39,0-1        41%
+ slurm.write('mkdir -p /discover/nobackup/msutton1/pliceme_logs\n')
+    slurm.write('usr/local/other/policeme/policeme.exe -d /discover/nobackup/msutton1/pliceme_logs\n\n')
+    slurm.write('ulimit -s unlimited\n\n')
+
+    for log, afile in zip(logs,files):
+
+        #copy main code in folder discover/nobackup/msutton1/torres
+        filenum = afile[37:42]
+        print filenum
+        newPath = '/discover/nobackup/msutton1/torres/OMAERUV_1.6.5_OneDir_'
+        newPath += afile[37:42]
+        print newPath
+        #pdb.set_trace()
+        os.mkdir(newPath)
+        gen.copyDir(Source_code,newPath)
+
+        #Add correct L1 and log file
+        oldL1 = 'OMI-Aura_L1-OML1BRVG_2007m0820t0117-o16467_v003-2011m0126t170604-p1.he4'
+        os.rename(os.path.join(newPath,oldL1),os.path.join(newPath,afile))
+        oldLog = 'OMAERUV_1.6.5_16467_16058629.log'
+        os.rename(os.path.join(newPath,oldLog),os.path.join(newPath,log[:-1]))
+
+        #EDIT PCF file
+        #pdb.set_trace()
+        pcfpath = os.path.join(newPath,'OMAERUV.pcf')
+        pcf = open(pcfpath,'r')
+        luns = pcf.readlines()
+        luns[5] = '1102|%s||||%s|1\n' %(afile,afile)
+        luns[39] = '10100|' + log[:-1] + '|||||1\n'
+        luns[40] = '10101|' + log[:-1] + '|||||1\n'
+        luns[41] = '10102|' + log[:-1] + '|||||1\n'
+        luns[33] = '455900|OMI-Aura_L2-OMAERUV-o' + filenum + '.he5||||OMI-Aura_L2-OMAERUV-o' + filenum + '.he5|1\n'
+         pcf.close
+        os.remove(pcfpath)
+        pcf = open(pcfpath,'w')
+        pcf.writelines(luns)
+        pcf.close()
+        #Write and execute SLURM script figure
+        myline = 'cd /discover/nobackup/msutton1/torres/OMAERUV_1.6.5_OneDir_%s\n' %(filenum)
+        slurm.write(myline)
+        myline = 'export PGSMSG=$NOBACKUP/torres/OMAERUV_1.6.5_OneDir_%s\n' %(filenum)
+        slurm.write(myline)
+        myline = 'export PGS_PC_INFO_FILE=$NOBACKUP/torres/OMAERUV_1.6.5_OneDir_%s/OMAERUV.pcf\n' %(filenum)
+        slurm.write(myline)
+        slurm.write('./OMAERUV.exe >log_1 2>&1 &\n')
+        #pdb.set_trace()
+
+    slurm.write('#Wait for all brackgroud proccesses to finish\nwait\n\n')
+    slurm.write('#exit when allprocesses are complete\nexit0\n')
+    slurm.close
